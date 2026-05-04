@@ -1,0 +1,16 @@
+# Virtual environments
+venv/
+weather-env/
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/

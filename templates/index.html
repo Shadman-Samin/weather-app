@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Atmos - Weather Dashboard</title>
+    <!-- Modern Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <!-- Leaflet map -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIINUPAZm5/MXkPWY5mnLb9pjVX3ykQFe8=" crossorigin="" />
+    <!-- Custom Styles -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    {% if city_image %}
+    <style>
+        body::before {
+            content: "";
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            background: url('{{ city_image }}') no-repeat center center/cover;
+            filter: brightness(0.6) blur(6px);
+            z-index: -2;
+            transform: scale(1.1); /* Prevent blurred edges */
+        }
+    </style>
+    {% endif %}
+</head>
+<body class="{{ 'dark-theme' if request.cookies.get('theme') != 'light' else 'light-theme' }}">
+    <!-- Dynamic animated gradient fallback if no image -->
+    <div class="background-gradient"></div>
+    
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar glass-panel">
+            <div class="brand">
+                <i class="fa-solid fa-cloud-sun-rain"></i>
+                <h2>Atmos</h2>
+            </div>
+            
+            <form method="POST" action="/" class="search-form" id="search-form">
+                <div class="search-box">
+                    <i class="fa-solid fa-magnifying-glass"></i>
+                    <input type="text" name="city" id="city-input" placeholder="Search for cities..." required autocomplete="off">
+                    <div id="suggestions-container" class="suggestions-dropdown"></div>
+                </div>
+                <button class="btn-icon geolocation-btn" type="button" onclick="getLocation()" title="Current Location">
+                    <i class="fa-solid fa-location-crosshairs"></i>
+                </button>
+            </form>
+
+            <div class="flash-messages">
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        {% for category, message in messages %}
+                            <div class="alert alert-{{ category }}">{{ message }}</div>
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
+            </div>
+
+            <nav class="nav-links">
+                <a href="/" class="active"><i class="fa-solid fa-house"></i> Dashboard</a>
+                <a href="/about"><i class="fa-solid fa-circle-info"></i> About</a>
+                <button id="theme-toggle" class="btn-transparent"><i class="fa-solid fa-sun"></i> Light Mode</button>
+            </nav>
+
+            {% if search_history %}
+            <div class="search-history">
+                <div class="history-header">
+                    <h3>Recent Searches</h3>
+                    <a href="/clear_history" class="clear-btn" title="Clear History"><i class="fa-solid fa-trash-can"></i></a>
+                </div>
+                <ul class="history-list">
+                    {% for item in search_history %}
+                    <li>
+                        <form method="POST" action="/" style="display: inline; width: 100%;">
+                            <input type="hidden" name="city" value="{{ item.city }}">
+                            <button type="submit" class="history-item">
+                                <i class="fa-solid fa-clock-rotate-left"></i>
+                                <span>{{ item.city }}</span>
+                            </button>
+                        </form>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            {% if weather_data %}
+            <div class="weather-dashboard">
+                <!-- Current Weather Overview -->
+                <div class="current-weather glass-panel">
+                    <div class="weather-header">
+                        <div class="location-info">
+                            <h1>{{ weather_data.city }}</h1>
+                            <p class="date-time">Updated: {{ weather_data.last_updated }}</p>
+                        </div>
+                        <img class="weather-icon-large" src="http://openweathermap.org/img/wn/{{ weather_data.icon }}@4x.png" alt="Weather Icon">
+                    </div>
+                    <div class="temperature-display">
+                        <h2 class="temp">{{ weather_data.temperature }}°</h2>
+                        <div class="temp-details">
+                            <p class="description">{{ weather_data.description }}</p>
+                            <p class="feels-like">Feels like {{ weather_data.feels_like }}°C</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Air Conditions / Highlights -->
+                <div class="weather-highlights glass-panel">
+                    <h3>Today's Highlights</h3>
+                    <div class="highlights-grid">
+                        <div class="highlight-card">
+                            <div class="card-header">
+                                <i class="fa-solid fa-wind"></i> Wind Status
+                            </div>
+                            <div class="card-body">
+                                <h4>{{ weather_data.wind_speed }} <span>m/s</span></h4>
+                                <p>{{ weather_data.wind_direction_string }} ({{ weather_data.wind_direction }}°)</p>
+                            </div>
+                        </div>
+                        <div class="highlight-card">
+                            <div class="card-header">
+                                <i class="fa-solid fa-droplet"></i> Humidity
+                            </div>
+                            <div class="card-body">
+                                <h4>{{ weather_data.humidity }}<span>%</span></h4>
+                            </div>
+                        </div>
+                        <div class="highlight-card">
+                            <div class="card-header">
+                                <i class="fa-regular fa-eye"></i> Visibility
+                            </div>
+                            <div class="card-body">
+                                <h4>{{ weather_data.visibility }} <span>km</span></h4>
+                            </div>
+                        </div>
+                        <div class="highlight-card">
+                            <div class="card-header">
+                                <i class="fa-solid fa-gauge-high"></i> Pressure
+                            </div>
+                            <div class="card-body">
+                                <h4>{{ weather_data.pressure }} <span>hPa</span></h4>
+                            </div>
+                        </div>
+                        <div class="highlight-card">
+                            <div class="card-header">
+                                <i class="fa-solid fa-cloud"></i> Cloudiness
+                            </div>
+                            <div class="card-body">
+                                <h4>{{ weather_data.cloudiness }}<span>%</span></h4>
+                            </div>
+                        </div>
+                        <div class="highlight-card">
+                            <div class="card-header">
+                                <i class="fa-regular fa-sun"></i> Sunrise & Sunset
+                            </div>
+                            <div class="card-body sunrise-sunset">
+                                <p><i class="fa-solid fa-arrow-up"></i> {{ weather_data.sunrise }}</p>
+                                <p><i class="fa-solid fa-arrow-down"></i> {{ weather_data.sunset }}</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 5 Day Forecast -->
+                {% if weather_data.forecast %}
+                <div class="forecast glass-panel">
+                    <h3>5-Day Forecast</h3>
+                    <div class="forecast-list">
+                        {% for day in weather_data.forecast %}
+                        <div class="forecast-item">
+                            <p class="forecast-date">{{ day.date }}</p>
+                            <img src="http://openweathermap.org/img/wn/{{ day.icon }}.png" alt="Icon">
+                            <p class="forecast-temp">{{ day.temperature }}°</p>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- Map -->
+                <div class="map-container glass-panel">
+                    <h3>Interactive Map</h3>
+                    <div id="map"></div>
+                </div>
+            </div>
+            {% else %}
+            <!-- Welcome Screen -->
+            <div class="welcome-screen glass-panel">
+                <i class="fa-solid fa-earth-americas"></i>
+                <h1>Welcome to Atmos</h1>
+                <p>Search for a city or use your location to get real-time weather forecasts, beautiful visuals, and interactive maps.</p>
+            </div>
+            {% endif %}
+        </main>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <script>
+        // Autocomplete Suggestions
+        const cityInput = document.getElementById('city-input');
+        const suggestionsContainer = document.getElementById('suggestions-container');
+        let debounceTimer;
+
+        cityInput.addEventListener('input', function() {
+            clearTimeout(debounceTimer);
+            const query = this.value;
+            
+            if (query.length < 2) {
+                suggestionsContainer.innerHTML = '';
+                suggestionsContainer.style.display = 'none';
+                return;
+            }
+            
+            debounceTimer = setTimeout(() => {
+                fetch(`/api/suggestions?q=${encodeURIComponent(query)}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        suggestionsContainer.innerHTML = '';
+                        if (data.length > 0) {
+                            data.forEach(item => {
+                                const div = document.createElement('div');
+                                div.className = 'suggestion-item';
+                                div.textContent = item.name;
+                                div.addEventListener('click', () => {
+                                    cityInput.value = item.name;
+                                    suggestionsContainer.style.display = 'none';
+                                    document.getElementById('search-form').submit();
+                                });
+                                suggestionsContainer.appendChild(div);
+                            });
+                            suggestionsContainer.style.display = 'block';
+                        } else {
+                            suggestionsContainer.style.display = 'none';
+                        }
+                    })
+                    .catch(err => console.error(err));
+            }, 300);
+        });
+
+        // Hide suggestions when clicking outside
+        document.addEventListener('click', function(e) {
+            if (e.target !== cityInput && e.target !== suggestionsContainer) {
+                suggestionsContainer.style.display = 'none';
+            }
+        });
+
+        // Theme Toggle Logic
+        const themeBtn = document.getElementById('theme-toggle');
+        const body = document.body;
+        
+        if (!body.classList.contains('dark-theme')) {
+            themeBtn.innerHTML = '<i class="fa-solid fa-moon"></i> Dark Mode';
+        }
+
+        themeBtn.addEventListener('click', () => {
+            body.classList.toggle('dark-theme');
+            body.classList.toggle('light-theme');
+            const isDark = body.classList.contains('dark-theme');
+            document.cookie = `theme=${isDark ? 'dark' : 'light'}; path=/; max-age=31536000`;
+            themeBtn.innerHTML = isDark ? '<i class="fa-solid fa-sun"></i> Light Mode' : '<i class="fa-solid fa-moon"></i> Dark Mode';
+            
+            window.dispatchEvent(new Event('theme-changed'));
+        });
+
+        // Geolocation
+        function getLocation() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    position => {
+                        window.location.href = `/?lat=${position.coords.latitude}&lon=${position.coords.longitude}`;
+                    },
+                    error => {
+                        alert("Unable to retrieve your location.");
+                    }
+                );
+            } else {
+                alert("Geolocation is not supported by your browser.");
+            }
+        }
+
+        // Map Initialization
+        {% if weather_data %}
+        document.addEventListener('DOMContentLoaded', () => {
+            const mapEl = document.getElementById('map');
+            const map = L.map(mapEl, {
+                center: [{{ weather_data.latitude }}, {{ weather_data.longitude }}],
+                zoom: 10,
+                scrollWheelZoom: true
+            });
+            
+            let tileLayer;
+
+            function updateMapLayer() {
+                if (tileLayer) {
+                    map.removeLayer(tileLayer);
+                }
+                const isDark = document.body.classList.contains('dark-theme');
+                const tileUrl = isDark 
+                    ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png' 
+                    : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+
+                tileLayer = L.tileLayer(tileUrl, {
+                    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                    maxZoom: 19
+                }).addTo(map);
+            }
+
+            updateMapLayer();
+            
+            window.addEventListener('theme-changed', () => {
+                updateMapLayer();
+                map.invalidateSize();
+            });
+
+            L.marker([{{ weather_data.latitude }}, {{ weather_data.longitude }}])
+                .addTo(map)
+                .bindPopup('<b>{{ weather_data.city }}</b><br>{{ weather_data.description }}')
+                .openPopup();
+                
+            // Multiple invalidateSize calls to handle layout timing
+            setTimeout(() => map.invalidateSize(), 100);
+            setTimeout(() => map.invalidateSize(), 500);
+            setTimeout(() => map.invalidateSize(), 1500);
+            
+            // Also recalculate when the map scrolls into view
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        map.invalidateSize();
+                    }
+                });
+            }, { threshold: 0.1 });
+            observer.observe(mapEl);
+            
+            // Handle window resize
+            window.addEventListener('resize', () => map.invalidateSize());
+        });
+        {% endif %}
+    </script>
+</body>
+</html>

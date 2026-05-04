@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Server Error</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body class="{{ 'dark-theme' if request.cookies.get('theme') != 'light' else 'light-theme' }}">
+    <div class="background-gradient"></div>
+    <div class="app-container" style="justify-content: center; align-items: center;">
+        <div class="glass-panel" style="padding: 4rem; text-align: center;">
+            <h1 style="font-size: 6rem; color: #e74c3c; margin-bottom: 0;">500</h1>
+            <h2 style="margin-bottom: 1.5rem;">Internal Server Error</h2>
+            <p style="margin-bottom: 2rem;">Oops! Something went wrong on our end.</p>
+            <a href="/" style="padding: 12px 24px; background: var(--primary-color); color: white; text-decoration: none; border-radius: 30px;">Return Home</a>
+        </div>
+    </div>
+</body>
+</html>
